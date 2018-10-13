@@ -55,19 +55,23 @@ bool ROB_check_space(ROB *t){
 /////////////////////////////////////////////////////////////
 
 int ROB_insert(ROB *t, Inst_Info inst){
+    int return_value = - 1;
     if (ROB_check_space(t)) {
+        return_value = t->tail_ptr;
+
         t->ROB_Entries[t->tail_ptr].inst = inst;
         t->ROB_Entries[t->tail_ptr].valid = true;
         t->ROB_Entries[t->tail_ptr].ready = false;
+
+        t->ROB_Entries[t->tail_ptr].inst.dr_tag = t->tail_ptr;
 
         if (t->tail_ptr == MAX_ROB_ENTRIES - 1) {
             t->tail_ptr = 0;
         } else {
             ++(t->tail_ptr);
         }
-	return t->tail_ptr;
     }
-    return -1;
+    return return_value;
 }
 
 /////////////////////////////////////////////////////////////

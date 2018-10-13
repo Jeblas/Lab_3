@@ -8,6 +8,7 @@
 #include "pipeline.h"
 #include <cstdlib>
 #include <cstring>
+#include <vector>
 
 
 extern int32_t PIPE_WIDTH;
@@ -279,7 +280,52 @@ void pipe_cycle_rename(Pipeline *p){
   // TODO: If src1/src2 is not remapped marked as src ready
   // TODO: If src1/src2 remapped and the ROB (tag) is ready then mark src ready
   // FIXME: If there is stall, we should not do rename and ROB alloc twice
+  // Check ID latch
+  for(int ii=0; ii<PIPE_WIDTH; ii++){ 
+      //Check if ROB and REST have space
+      // TODO check for stall
+      if (ROB_check_space(p->pipe_ROB) && REST_check_space(p->pipe_REST)) {
+        Inst_Info instruction = p->ID_latch[ii].inst;
+        //Place instr in rob
+        int drtag = ROB_insert(p->pipe_ROB, instruction);
+        instruction.dr_tag = drtag;
 
+        if (instruction.src1_reg != -1) {
+         //Check RAT for renamed
+          int remap = RAT_get_remap(p->pipe_RAT, instruction.src1_reg);
+          if (remap == -1) {
+            // Register is ready
+            instruction.src1_ready = true;
+            instruction.src1_tag = -1;
+          } else {
+            // Asssign register remap and check ready
+            instruction.src1_ready = ROB_check_ready(p->pipe_ROB, remap);
+            instruction.src1_tag = remap;
+          }
+        }
+
+        if (instruction.src2_reg != -1) {
+         //Check RAT for renamed
+          int remap = RAT_get_remap(p->pipe_RAT, instruction.src2_reg);
+          if (remap == -1) {
+            // Register is ready
+            instruction.src2_ready = true;
+            instruction.src2_tag = -1;
+          } else {
+            // Asssign register remap and check ready
+            instruction.src2_ready = ROB_check_ready(p->pipe_ROB, remap);
+            instruction.src2_tag = remap;
+          }
+        }
+        // Add instruction to REST
+        REST_insert(p->pipe_REST,instruction);
+        // Add drtag to to RAT
+        RAT_set_remap(p->pipe_RAT, instruction.dest_reg, drtag);
+
+      } else {
+        // stall no space in ROB or REST
+      }
+  }
 }
 
 //--------------------------------------------------------------------//
@@ -292,12 +338,86 @@ void pipe_cycle_schedule(Pipeline *p){
     // inorder scheduling
     // Find all valid entries, if oldest is stalled then stop
     // Else send it out and mark it as scheduled
+    for(int ii=0; ii<PIPE_WIDTH; ii++){
+      // Get oldest valid entry
+      REST_Entry oldest_entry;
+      oldest_entry.valid = false;
+      for (int jj = 0; jj < MAX_REST_ENTRIES; ++jj) {
+        REST_Entry rest_entry = p->pipe_REST->REST_Entries[jj];
+        // TODO perhaps the oldest instruction can be scheduled
+        if (rest_entry.valid && !rest_entry.scheduled) {
+          rest_entry.inst.inst_num;
+          if (oldest_entry.valid == false) {
+            oldest_entry = rest_entry;
+          } else {
+            if (oldest_entry.inst.inst_num > rest_entry.inst.inst_num) {
+              // have new oldest instruction
+              oldest_entry = rest_entry;
+            }
+          }
+        }
+      } 
+
+      if (oldest_entry.inst.src1_ready && oldest_entry.inst.src2_ready) {
+        p->SC_latch[ii].inst = oldest_entry.inst;
+        p->SC_latch[ii].stall = false;
+        p->SC_latch[ii].valid = oldest_entry.valid;
+        // send out oldest
+        REST_schedule(p->pipe_REST, oldest_entry.inst);
+      } else {
+        // oldest entry is stalled : STOP
+        // possible check to see if 
+        p->SC_latch[ii].stall = true;
+        p->SC_latch[ii].valid = false;
+      }
+    }
   }
 
   if(SCHED_POLICY==1){
     // out of order scheduling
     // Find valid/unscheduled/src1ready/src2ready entries in REST
     // Transfer them to SC_latch and mark that REST entry as scheduled
+  
+    // FIND valid entries
+    std::vector<REST_Entry> entries_to_sched;
+    for (int ii = 0; ii < MAX_REST_ENTRIES; ++ii) {
+      REST_Entry rest_entry = p->pipe_REST->REST_Entries[ii];
+      if (rest_entry.valid && !rest_entry.scheduled && rest_entry.inst.src1_ready
+          && rest_entry.inst.src2_ready) {
+            entries_to_sched.push_back(rest_entry);
+          }
+    }
+
+    // get the oldest entries in entries to schedule and schedule them
+    for(int ii=0; ii<PIPE_WIDTH; ii++){ 
+      REST_Entry oldest_entry;
+      oldest_entry.valid = false;
+      int oldest_entry_index = -1;
+      for (int kk = 0; kk < entries_to_sched.size(); ++kk) {
+        if (oldest_entry.valid == false) {
+          oldest_entry = entries_to_sched[kk];
+          oldest_entry_index = kk;
+        } else {
+          if (oldest_entry.inst.inst_num > entries_to_sched[kk].inst.inst_num) {
+            oldest_entry = entries_to_sched[kk];
+            oldest_entry_index = kk;
+          }
+        }
+      }
+      // Have oldest viable entry
+      if (oldest_entry_index != -1) {
+        p->SC_latch[ii].inst = oldest_entry.inst;
+        p->SC_latch[ii].stall = false;
+        p->SC_latch[ii].valid = oldest_entry.valid;
+        // send out oldest
+        REST_schedule(p->pipe_REST, oldest_entry.inst);
+        entries_to_sched.erase(entries_to_sched.begin() + oldest_entry_index);
+      } else {
+        //Mark SC_Latch as invalid
+        p->SC_latch[ii].stall = true;
+        p->SC_latch[ii].valid = false;
+      }
+    }
   }
 }
 
@@ -310,6 +430,14 @@ void pipe_cycle_broadcast(Pipeline *p){
   // TODO: Broadcast it to REST (using wakeup function)
   // TODO: Remove entry from REST (using inst_num)
   // TODO: Update the ROB, mark ready, and update Inst Info in ROB
+  for(int ii = 0; ii < MAX_BROADCASTS; ++ii) {
+      Pipe_Latch current_latch = p->EX_latch[ii];
+      if (current_latch.valid && !current_latch.stall) {
+        REST_wakeup(p->pipe_REST, current_latch.inst.dr_tag);
+        REST_remove(p->pipe_REST, current_latch.inst);
+        ROB_mark_ready(p->pipe_ROB, current_latch.inst);
+      }
+  }
  
 }
 
@@ -323,6 +451,12 @@ void pipe_cycle_commit(Pipeline *p) {
   // TODO: check the head of the ROB. If ready commit (update stats)
   // TODO: Deallocate entry from ROB
   // TODO: Update RAT after checking if the mapping is still valid
+  while (ROB_check_head(p->pipe_ROB)) {
+    Inst_Info inst_to_commit = ROB_remove_head(p->pipe_ROB);
+    if (RAT_get_remap(p->pipe_RAT, inst_to_commit.dest_reg) == inst_to_commit.dr_tag) {
+      RAT_reset_entry(p->pipe_RAT, inst_to_commit.dest_reg);
+    }
+  }
 
   // DUMMY CODE (for compiling, and ensuring simulation terminates!)
   for(ii=0; ii<PIPE_WIDTH; ii++){
@@ -330,8 +464,8 @@ void pipe_cycle_commit(Pipeline *p) {
       if(p->FE_latch[ii].inst.inst_num >= p->halt_inst_num){
         p->halt=true;
       }else{
-	p->stat_retired_inst++;
-	p->FE_latch[ii].valid=false;
+	      p->stat_retired_inst++;
+	      p->FE_latch[ii].valid=false;
       }
     }
   }
