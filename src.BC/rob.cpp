@@ -29,7 +29,7 @@ void ROB_print_state(ROB *t){
  int ii = 0;
   printf("Printing ROB \n");
   printf("Entry  Inst   Valid   ready\n");
-  for(ii = 0; ii < 7; ii++) {
+  for(ii = 0; ii < NUM_ROB_ENTRIES; ii++) {
     printf("%5d ::  %d\t", ii, (int)t->ROB_Entries[ii].inst.inst_num);
     printf(" %5d\t", t->ROB_Entries[ii].valid);
     printf(" %5d\n", t->ROB_Entries[ii].ready);
@@ -47,6 +47,7 @@ void ROB_print_state(ROB *t){
 /////////////////////////////////////////////////////////////
 
 bool ROB_check_space(ROB *t){
+    //std::cout << "ROB SPACE? = "<<!(t->ROB_Entries[t->tail_ptr].valid) << std::endl;
     return !(t->ROB_Entries[t->tail_ptr].valid);
 }
 
@@ -57,6 +58,8 @@ bool ROB_check_space(ROB *t){
 int ROB_insert(ROB *t, Inst_Info inst){
     int return_value = - 1;
     if (ROB_check_space(t)) {
+        
+
         return_value = t->tail_ptr;
 
         t->ROB_Entries[t->tail_ptr].inst = inst;
@@ -65,7 +68,7 @@ int ROB_insert(ROB *t, Inst_Info inst){
 
         t->ROB_Entries[t->tail_ptr].inst.dr_tag = t->tail_ptr;
 
-        if (t->tail_ptr == MAX_ROB_ENTRIES - 1) {
+        if (t->tail_ptr == NUM_ROB_ENTRIES - 1) {
             t->tail_ptr = 0;
         } else {
             ++(t->tail_ptr);
@@ -115,7 +118,7 @@ Inst_Info ROB_remove_head(ROB *t){
     if (ROB_check_head(t)) {
         t->ROB_Entries[old_head].valid = false;
 
-        if (t->head_ptr == MAX_ROB_ENTRIES - 1) {
+        if (t->head_ptr == NUM_ROB_ENTRIES - 1) {
             t->head_ptr = 0;
         } else {
             ++(t->head_ptr);

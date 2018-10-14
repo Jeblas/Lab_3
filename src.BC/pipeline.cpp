@@ -163,12 +163,21 @@ void pipe_cycle(Pipeline *p)
     p->stat_num_cycle++;
 
     pipe_cycle_commit(p);
+      //pipe_print_state(p);
     pipe_cycle_broadcast(p);
+      //pipe_print_state(p);
     pipe_cycle_exe(p);
+      //pipe_print_state(p);
     pipe_cycle_schedule(p);
+      //pipe_print_state(p);
     pipe_cycle_rename(p);
+      //pipe_print_state(p);
     pipe_cycle_decode(p);
+      //pipe_print_state(p);
     pipe_cycle_fetch(p);
+      //pipe_print_state(p);
+    //std::cin.ignore();
+    //std::system("pause");
 
 }
 
@@ -205,17 +214,17 @@ void pipe_cycle_decode(Pipeline *p){
        continue;  
      } else {  // No Stall & there is Space in Latch
        for(jj = 0; jj < PIPE_WIDTH; jj++) { // Loop Over FE Latch
-	 if(p->FE_latch[jj].valid) {
-	   if(p->FE_latch[jj].inst.inst_num == start_inst_id) { // In Order Inst Found
-	     p->ID_latch[ii]        = p->FE_latch[jj];
-	     p->ID_latch[ii].valid  = true;
-	     p->FE_latch[jj].valid  = false;
-	     start_inst_id++;
-	     break;
-	   }
-	 }
-       }
-     }
+	      if(p->FE_latch[jj].valid) {
+	        if(p->FE_latch[jj].inst.inst_num == start_inst_id) { // In Order Inst Found
+	          p->ID_latch[ii]        = p->FE_latch[jj];
+	          p->ID_latch[ii].valid  = true;
+	          p->FE_latch[jj].valid  = false;
+	          start_inst_id++;
+	          break;
+	        }      
+	      }
+      }
+    }
    }
    
 }
@@ -284,6 +293,8 @@ void pipe_cycle_rename(Pipeline *p){
   for(int ii=0; ii<PIPE_WIDTH; ii++){ 
       //Check if ROB and REST have space
       // TODO check for stall
+    if (p->ID_latch[ii].valid) {
+      //  continue;   
       if (ROB_check_space(p->pipe_ROB) && REST_check_space(p->pipe_REST)) {
         Inst_Info instruction = p->ID_latch[ii].inst;
         //Place instr in rob
@@ -296,12 +307,14 @@ void pipe_cycle_rename(Pipeline *p){
           if (remap == -1) {
             // Register is ready
             instruction.src1_ready = true;
-            instruction.src1_tag = -1;
+            //instruction.src1_tag = -1;
           } else {
             // Asssign register remap and check ready
             instruction.src1_ready = ROB_check_ready(p->pipe_ROB, remap);
             instruction.src1_tag = remap;
           }
+        } else {
+          instruction.src1_ready = true;
         }
 
         if (instruction.src2_reg != -1) {
@@ -316,15 +329,27 @@ void pipe_cycle_rename(Pipeline *p){
             instruction.src2_ready = ROB_check_ready(p->pipe_ROB, remap);
             instruction.src2_tag = remap;
           }
+        } else {
+          instruction.src2_ready = true;
         }
         // Add instruction to REST
         REST_insert(p->pipe_REST,instruction);
         // Add drtag to to RAT
-        RAT_set_remap(p->pipe_RAT, instruction.dest_reg, drtag);
-
+        //std::cout << "RAT arf_ID : " << instruction.dest_reg <<std::endl;
+        if (instruction.dest_reg != -1) {
+          RAT_set_remap(p->pipe_RAT, instruction.dest_reg, drtag);
+          //std::cout << "DR_TAGE" << drtag << std::endl;
+          //std::cout << "RAT arf_ID : " << instruction.dest_reg <<std::endl;
+        }
+        p->ID_latch[ii].valid = false;
       } else {
         // stall no space in ROB or REST
+
       }
+      
+    } else {
+      // stall
+    }
   }
 }
 
@@ -346,7 +371,7 @@ void pipe_cycle_schedule(Pipeline *p){
         REST_Entry rest_entry = p->pipe_REST->REST_Entries[jj];
         // TODO perhaps the oldest instruction can be scheduled
         if (rest_entry.valid && !rest_entry.scheduled) {
-          rest_entry.inst.inst_num;
+          //rest_entry.inst.inst_num;
           if (oldest_entry.valid == false) {
             oldest_entry = rest_entry;
           } else {
@@ -357,8 +382,12 @@ void pipe_cycle_schedule(Pipeline *p){
           }
         }
       } 
-
-      if (oldest_entry.inst.src1_ready && oldest_entry.inst.src2_ready) {
+      //if (ii != 0 && p->SC_latch[ii - 1].stall == true) {
+      //  p->SC_latch[ii].stall = true;
+      //  p->SC_latch[ii].valid = false;
+      //  continue;
+      //}
+      if (oldest_entry.inst.src1_ready && oldest_entry.inst.src2_ready && oldest_entry.valid) {
         p->SC_latch[ii].inst = oldest_entry.inst;
         p->SC_latch[ii].stall = false;
         p->SC_latch[ii].valid = oldest_entry.valid;
@@ -436,7 +465,9 @@ void pipe_cycle_broadcast(Pipeline *p){
         REST_wakeup(p->pipe_REST, current_latch.inst.dr_tag);
         REST_remove(p->pipe_REST, current_latch.inst);
         ROB_mark_ready(p->pipe_ROB, current_latch.inst);
+        p->EX_latch[ii].valid = false;
       }
+
   }
  
 }
@@ -446,29 +477,43 @@ void pipe_cycle_broadcast(Pipeline *p){
 
 
 void pipe_cycle_commit(Pipeline *p) {
-  int ii = 0;
+  //int ii = 0;
 
   // TODO: check the head of the ROB. If ready commit (update stats)
   // TODO: Deallocate entry from ROB
   // TODO: Update RAT after checking if the mapping is still valid
-  while (ROB_check_head(p->pipe_ROB)) {
-    Inst_Info inst_to_commit = ROB_remove_head(p->pipe_ROB);
-    if (RAT_get_remap(p->pipe_RAT, inst_to_commit.dest_reg) == inst_to_commit.dr_tag) {
-      RAT_reset_entry(p->pipe_RAT, inst_to_commit.dest_reg);
+  //while (ROB_check_head(p->pipe_ROB)) {
+  //  Inst_Info inst_to_commit = ROB_remove_head(p->pipe_ROB);
+  //  if (RAT_get_remap(p->pipe_RAT, inst_to_commit.dest_reg) == inst_to_commit.dr_tag) {
+  //    RAT_reset_entry(p->pipe_RAT, inst_to_commit.dest_reg);
+  //  }
+    //++(p->stat_retired_inst);
+  //}
+  for(int jj=0; jj<PIPE_WIDTH; jj++){ 
+    if (ROB_check_head(p->pipe_ROB)) {
+      // TODO never reach here
+      Inst_Info inst_to_commit = ROB_remove_head(p->pipe_ROB);
+      if (RAT_get_remap(p->pipe_RAT, inst_to_commit.dest_reg) == inst_to_commit.dr_tag) {
+        RAT_reset_entry(p->pipe_RAT, inst_to_commit.dest_reg);
+      }
+      ++(p->stat_retired_inst);
+      if (inst_to_commit.inst_num >= p->halt_inst_num) {
+        p->halt = true;
+      }
     }
   }
 
   // DUMMY CODE (for compiling, and ensuring simulation terminates!)
-  for(ii=0; ii<PIPE_WIDTH; ii++){
-    if(p->FE_latch[ii].valid){
-      if(p->FE_latch[ii].inst.inst_num >= p->halt_inst_num){
-        p->halt=true;
-      }else{
-	      p->stat_retired_inst++;
-	      p->FE_latch[ii].valid=false;
-      }
-    }
-  }
+  //for(ii=0; ii<PIPE_WIDTH; ii++){
+    //if(p->FE_latch[ii].valid){
+      //if(p->FE_latch[ii].inst.inst_num >= p->halt_inst_num){
+      //  p->halt=true;
+      //}else{
+	     // p->stat_retired_inst++;
+	      //p->FE_latch[ii].valid=false;
+      //}
+    //}
+  //}
 }
   
 //--------------------------------------------------------------------//

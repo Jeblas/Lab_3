@@ -53,6 +53,7 @@ bool  REST_check_space(REST *t){
             return true;
         }
     }
+    //std::cout << "NO SPACE IN REST\n";
     return false;
 }
 
