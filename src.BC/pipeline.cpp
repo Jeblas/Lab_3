@@ -177,8 +177,10 @@ void pipe_cycle(Pipeline *p)
     pipe_cycle_fetch(p);
       //pipe_print_state(p);
     //std::cin.ignore();
-    //std::system("pause");
-
+    //if (p->stat_num_cycle >= 104955) {
+    //  pipe_print_state(p);
+    //  std::cin.ignore();
+    //}
 }
 
 //--------------------------------------------------------------------//
@@ -290,6 +292,12 @@ void pipe_cycle_rename(Pipeline *p){
   // TODO: If src1/src2 remapped and the ROB (tag) is ready then mark src ready
   // FIXME: If there is stall, we should not do rename and ROB alloc twice
   // Check ID latch
+  // Hack to get in order inserts into rob
+  if (PIPE_WIDTH == 2 && p->ID_latch[0].inst.inst_num > p->ID_latch[1].inst.inst_num) {
+    Pipe_Latch temp = p->ID_latch[0];
+    p->ID_latch[0] = p->ID_latch[1];
+    p->ID_latch[1] = temp;
+  }
   for(int ii=0; ii<PIPE_WIDTH; ii++){ 
       //Check if ROB and REST have space
       // TODO check for stall
@@ -344,7 +352,6 @@ void pipe_cycle_rename(Pipeline *p){
         p->ID_latch[ii].valid = false;
       } else {
         // stall no space in ROB or REST
-
       }
       
     } else {
