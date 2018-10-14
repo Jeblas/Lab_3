@@ -163,24 +163,12 @@ void pipe_cycle(Pipeline *p)
     p->stat_num_cycle++;
 
     pipe_cycle_commit(p);
-      //pipe_print_state(p);
     pipe_cycle_broadcast(p);
-      //pipe_print_state(p);
     pipe_cycle_exe(p);
-      //pipe_print_state(p);
     pipe_cycle_schedule(p);
-      //pipe_print_state(p);
     pipe_cycle_rename(p);
-      //pipe_print_state(p);
     pipe_cycle_decode(p);
-      //pipe_print_state(p);
     pipe_cycle_fetch(p);
-      //pipe_print_state(p);
-    //std::cin.ignore();
-    //if (p->stat_num_cycle >= 104955) {
-    //  pipe_print_state(p);
-    //  std::cin.ignore();
-    //}
 }
 
 //--------------------------------------------------------------------//
@@ -343,11 +331,10 @@ void pipe_cycle_rename(Pipeline *p){
         // Add instruction to REST
         REST_insert(p->pipe_REST,instruction);
         // Add drtag to to RAT
-        //std::cout << "RAT arf_ID : " << instruction.dest_reg <<std::endl;
+
         if (instruction.dest_reg != -1) {
           RAT_set_remap(p->pipe_RAT, instruction.dest_reg, drtag);
-          //std::cout << "DR_TAGE" << drtag << std::endl;
-          //std::cout << "RAT arf_ID : " << instruction.dest_reg <<std::endl;
+
         }
         p->ID_latch[ii].valid = false;
       } else {
